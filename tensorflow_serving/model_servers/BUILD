@@ -215,7 +215,7 @@ cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_googlesource_code_re2//:re2",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
         "@org_tensorflow//tensorflow/cc/saved_model:loader",
         "@org_tensorflow//tensorflow/cc/saved_model:signature_constants",
         "@org_tensorflow//tensorflow/core:lib",
@@ -236,8 +236,8 @@ cc_library(
         "//tensorflow_serving/util:status_util",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@local_xla//xla/tsl/lib/monitoring:collected_metrics",
-        "@local_xla//xla/tsl/lib/monitoring:collection_registry",
+        "@xla//xla/tsl/lib/monitoring:collected_metrics",
+        "@xla//xla/tsl/lib/monitoring:collection_registry",
     ],
 )
 
@@ -460,9 +460,6 @@ SUPPORTED_TENSORFLOW_OPS = if_v2([]) + if_not_v2([
     "@org_tensorflow//tensorflow/contrib:contrib_ops_op_lib",
 ]) + [
     "@org_tensorflow_text//tensorflow_text:ops_lib",
-    # Support for TensorFlow Decision Forests inference ops.
-    # [September 2022] This dependency adds 3 MB to the model server (352 MB -> 355 MB i.e. +0.8%).
-    "@org_tensorflow_decision_forests//tensorflow_decision_forests/tensorflow/ops/inference:kernel_and_op",
 ]
 
 cc_library(
@@ -526,7 +523,7 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/memory",
         "@com_google_protobuf//:cc_wkt_protos",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
         "@org_tensorflow//tensorflow/c:c_api",
         "@org_tensorflow//tensorflow/cc/saved_model:tag_constants",
         "@org_tensorflow//tensorflow/core:lib",
@@ -661,7 +658,7 @@ cc_library(
         "@com_github_grpc_grpc//:grpc",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/time",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
     ] + if_google(["//third_party/grpc:grpc++"]),
 )
 
