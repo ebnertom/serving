@@ -18,10 +18,14 @@ def tf_serving_workspace():
     )
 
     # ===== Bazel skylib dependency =====
+    # Must be 1.7+ for paths.is_normalized used by protobuf 6.x
     http_archive(
         name = "bazel_skylib",
-        sha256 = "74d544d96f4a5bb630d465ca8bbcfe231e3594e5aae57e1edbf17a6eb3ca2506",
-        url = "https://github.com/bazelbuild/bazel-skylib/releases/download/1.3.0/bazel-skylib-1.3.0.tar.gz",
+        sha256 = "fa01292859726603e3cd3a0f3f29625e68f4d2b165647c72908045027473e933",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.8.0/bazel-skylib-1.8.0.tar.gz",
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.8.0/bazel-skylib-1.8.0.tar.gz",
+        ],
     )
 
     # ===== Bazel package rules dependency =====
@@ -47,6 +51,20 @@ def tf_serving_workspace():
         sha256 = "8836ad722ab211de41cb82fe098911986604f6286f67d10dfb2b6787bf418f49",
         strip_prefix = "libevent-release-2.1.12-stable",
         build_file = "@//third_party/libevent:BUILD",
+        patch_cmds = [
+            # libevent 2.1.12 predates glibc 2.36, which added arc4random_buf to
+            # <stdlib.h> as `extern`.  evutil_rand.c does `#define ARC4RANDOM_EXPORT
+            # static` and includes arc4random.c, which then defines
+            # `static void arc4random_buf(...)` — a conflicting-declaration error
+            # against glibc's prior `extern` declaration.
+            #
+            # Fix: make ARC4RANDOM_EXPORT empty so libevent's arc4random_buf has
+            # external linkage, matching glibc's extern declaration (no compile
+            # conflict).  At link time the hermetic glibc 2.27 sysroot does not
+            # provide arc4random_buf, so the linker pulls libevent's own
+            # implementation out of the static archive.
+            "sed -i 's|#define ARC4RANDOM_EXPORT static|#define ARC4RANDOM_EXPORT|' evutil_rand.c",
+        ],
     )
 
     # ===== ICU dependency =====
@@ -81,9 +99,13 @@ def tf_serving_workspace():
         repo_mapping = {
             "@com_google_re2": "@com_googlesource_code_re2",
             "@release_or_nightly": "@org_tensorflow",
+            "@local_xla": "@xla",
         },
         patch_cmds = [
             "find . -name \"tftext.bzl\" -exec sed -i 's|deps = deps,|deps = deps + [\"@com_google_protobuf\" + \"//:protobuf\"],|g' {} +",
+            # absl/utility:if_constexpr is Google-internal and not in open-source abseil;
+            # it only appears as a BUILD dep (never included in C++ source), so drop it.
+            "grep -rl 'absl/utility:if_constexpr' . | xargs sed -i '/absl\\/utility:if_constexpr/d'",
         ],
     )
 
@@ -134,6 +156,10 @@ def tf_serving_workspace():
         sha256 = "5abb2e440c0b8b13095bd208cfab3a5e569706af9a52b6a702d86ec0e25a7991",
         strip_prefix = "yggdrasil-decision-forests-1.4.0",
         urls = ["https://github.com/google/yggdrasil-decision-forests/archive/refs/tags/1.4.0.zip"],
+        patch_cmds = [
+            # protobuf 6.x removed py_proto_library from protobuf.bzl; it moved to bazel/py_proto_library.bzl
+            "sed -i 's|load(\"@com_google_protobuf//:protobuf.bzl\", \"py_proto_library\")|load(\"@com_google_protobuf//bazel:py_proto_library.bzl\", \"py_proto_library\")|g' yggdrasil_decision_forests/utils/compile.bzl",
+        ],
     )
 
     # The Boost repo is organized into git sub-modules (see the list at

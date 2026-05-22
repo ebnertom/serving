@@ -24,10 +24,19 @@ local_repository(
 load("//tensorflow_serving:repo.bzl", "tensorflow_http_archive")
 tensorflow_http_archive(
     name = "org_tensorflow",
-    sha256 = "86150d55ce57b2298d8ed42caa7b91c466ad33d9f7f347117c2257cc576d3413",
-    git_commit = "72fbba3d20f4616d7312b5e2b7f79daf6e82f2fa",
+    sha256 = "6438396f3b19af5d7ad787cf041f857af7505916dc08092e20b07d1b1f8df492",
+    git_commit = "a481b10260dfdf833a1b16007eead49c1d7febf3",
     patch = "//third_party/tensorflow:tensorflow.patch",
     patch_cmds = [
+        "sed -i 's/__attribute__((aligned(sizeof(T))))/__attribute__((aligned(8)))/g' tensorflow/core/kernels/concat_lib_gpu_impl.cu.cc",
+        # NcclSymmetricMemory uses %v (requires AbslStringify) but only implements ToString(); use it directly.
+        "sed -i 's/absl::StrFormat(\"Destroy %v\", \\*this)/\"Destroy \" + ToString()/g' third_party/xla/xla/backends/gpu/collectives/nccl_symmetric_memory.cc",
+        # NcclSymmetricMemory requires ncclWindow_t (NCCL >= 2.28.0 / version code 22800).
+        # The hermetic NCCL for CUDA 12.8.1 is 2.26.5 (code 22605). Guard identically to nccl_communicator.h.
+        "sed -i 's|^class NcclSymmetricMemory final|#if NCCL_VERSION_CODE >= 22800\\nclass NcclSymmetricMemory final|' third_party/xla/xla/backends/gpu/collectives/nccl_symmetric_memory.h",
+        "sed -i 's|^}  // namespace xla::gpu|#endif  // NCCL_VERSION_CODE >= 22800\\n}  // namespace xla::gpu|' third_party/xla/xla/backends/gpu/collectives/nccl_symmetric_memory.h",
+        "sed -i 's|^namespace xla::gpu {|namespace xla::gpu {\\n#if NCCL_VERSION_CODE >= 22800|' third_party/xla/xla/backends/gpu/collectives/nccl_symmetric_memory.cc",
+        "sed -i 's|^}  // namespace xla::gpu|#endif  // NCCL_VERSION_CODE >= 22800\\n}  // namespace xla::gpu|' third_party/xla/xla/backends/gpu/collectives/nccl_symmetric_memory.cc",
         "sed -i '/cc_library = _cc_library/d' tensorflow/core/platform/rules_cc.bzl",
         "echo -e \"\\ndef cc_library_oss(deps=[], **kwargs):\\n    if kwargs.get(\\\"name\\\") == \\\"lib_internal_impl\\\" or \\\"protobuf\\\" in kwargs.get(\\\"name\\\", \\\"\\\"):\\n        _cc_library(deps = deps, **kwargs)\\n        return\\n    if type(deps) == \\\"list\\\":\\n        if \\\"@com_google_protobuf//:protobuf\\\" not in deps:\\n            deps = deps + [\\\"@com_google_protobuf//:protobuf\\\"]\\n    else:\\n        deps = deps + [\\\"@com_google_protobuf//:protobuf\\\"]\\n    _cc_library(deps = deps, **kwargs)\\ncc_library = cc_library_oss\" >> tensorflow/core/platform/rules_cc.bzl",
         "sed -i 's#deps = \\[op_gen\\] + deps#deps = [op_gen] + deps + [clean_dep(\"//tensorflow/core/framework:kernel_shape_util\"), clean_dep(\"//tensorflow/core/framework:full_type_util\")]#' tensorflow/tensorflow.bzl",
@@ -52,7 +61,7 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_archive(
     name = "bazel_skylib",
-    sha256 = "97e709db2e97b646263b5c5e83e3b00de48c1ae55b9e421e3b5e3f9467d02a3a",
+    sha256 = "fa01292859726603e3cd3a0f3f29625e68f4d2b165647c72908045027473e933",
     urls = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.8.0/bazel-skylib-1.8.0.tar.gz",
         "https://github.com/bazelbuild/bazel-skylib/releases/download/1.8.0/bazel-skylib-1.8.0.tar.gz",
@@ -66,7 +75,13 @@ http_archive(
     url = "https://github.com/bazelbuild/rules_cc/releases/download/0.1.5/rules_cc-0.1.5.tar.gz",
 )
 
-# Initialize hermetic Python
+# Initialize TensorFlow's external dependencies.
+# tf_workspace3 must come first: it defines @xla (via tf_vendored), which is
+# required by python_init_rules for its patch file references.
+load("@org_tensorflow//tensorflow:workspace3.bzl", "tf_workspace3")
+tf_workspace3()
+
+# Initialize hermetic Python (must follow tf_workspace3 so @xla is defined)
 load("@org_tensorflow//third_party/py:python_init_rules.bzl", "python_init_rules")
 python_init_rules()
 
@@ -95,29 +110,25 @@ install_deps()
 # Details: https://github.com/google-ml-infra/rules_ml_toolchain
 http_archive(
     name = "rules_ml_toolchain",
-    sha256 = "de3b14418657eeacd8afc2aa89608be6ec8d66cd6a5de81c4f693e77bc41bee1",
-    strip_prefix = "rules_ml_toolchain-5653e5a0ca87c1272069b4b24864e55ce7f129a1",
+    sha256 = "54c1a357f71f611efdb4891ebd4bcbe4aeb6dfa7e473f14fd7ecad5062096616",
+    strip_prefix = "rules_ml_toolchain-d8cb9c2c168cd64000eaa6eda0781a9615a26ffe",
     urls = [
-        "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google-ml-infra/rules_ml_toolchain/archive/5653e5a0ca87c1272069b4b24864e55ce7f129a1.tar.gz",
-        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/5653e5a0ca87c1272069b4b24864e55ce7f129a1.tar.gz",
+        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/d8cb9c2c168cd64000eaa6eda0781a9615a26ffe.tar.gz",
     ],
 )
 
 load(
-    "@rules_ml_toolchain//cc_toolchain/deps:cc_toolchain_deps.bzl",
+    "@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl",
     "cc_toolchain_deps",
 )
 
 cc_toolchain_deps()
 
-register_toolchains("@rules_ml_toolchain//cc_toolchain:lx64_lx64")
-register_toolchains("@rules_ml_toolchain//cc_toolchain:lx64_lx64_cuda")
-# register_toolchains("@rules_ml_toolchain//cc_toolchain:la64_la64")
-# register_toolchains("@rules_ml_toolchain//cc_toolchain:la64_la64_cuda")
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
+# register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
+# register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 
-# Initialize TensorFlow's external dependencies.
-load("@org_tensorflow//tensorflow:workspace3.bzl", "tf_workspace3")
-tf_workspace3()
 load("@org_tensorflow//tensorflow:workspace2.bzl", "tf_workspace2")
 tf_workspace2()
 load("@org_tensorflow//tensorflow:workspace1.bzl", "tf_workspace1")
@@ -145,14 +156,14 @@ load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies")
 rules_proto_dependencies()
 
 load(
-    "@local_xla//third_party/py:python_wheel.bzl",
+    "@xla//third_party/py:python_wheel.bzl",
     "python_wheel_version_suffix_repository",
 )
 
 python_wheel_version_suffix_repository(name = "tf_wheel_version_suffix")
 
 load(
-    "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
+    "@rules_ml_toolchain//gpu/cuda:cuda_json_init_repository.bzl",
     "cuda_json_init_repository",
 )
 
@@ -164,13 +175,19 @@ load(
     "CUDNN_REDISTRIBUTIONS",
 )
 load(
-    "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
+    "@rules_ml_toolchain//gpu/cuda:cuda_redist_init_repositories.bzl",
     "cuda_redist_init_repositories",
     "cudnn_redist_init_repository",
 )
+load(
+    "@rules_ml_toolchain//gpu/cuda:cuda_redist_versions.bzl",
+    "REDIST_VERSIONS_TO_BUILD_TEMPLATES",
+)
+load("@xla//third_party/cccl:workspace.bzl", "CCCL_DIST_DICT", "CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES")
 
 cuda_redist_init_repositories(
-    cuda_redistributions = CUDA_REDISTRIBUTIONS,
+    cuda_redistributions = CUDA_REDISTRIBUTIONS | CCCL_DIST_DICT,
+    redist_versions_to_build_templates = REDIST_VERSIONS_TO_BUILD_TEMPLATES | CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES,
 )
 
 cudnn_redist_init_repository(
@@ -178,28 +195,28 @@ cudnn_redist_init_repository(
 )
 
 load(
-    "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
+    "@rules_ml_toolchain//gpu/cuda:cuda_configure.bzl",
     "cuda_configure",
 )
 
 cuda_configure(name = "local_config_cuda")
 
 load(
-    "@rules_ml_toolchain//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
+    "@rules_ml_toolchain//gpu/nccl:nccl_redist_init_repository.bzl",
     "nccl_redist_init_repository",
 )
 
 nccl_redist_init_repository()
 
 load(
-    "@rules_ml_toolchain//third_party/nccl/hermetic:nccl_configure.bzl",
+    "@rules_ml_toolchain//gpu/nccl:nccl_configure.bzl",
     "nccl_configure",
 )
 
 nccl_configure(name = "local_config_nccl")
 
 load(
-    "@rules_ml_toolchain//third_party/nvshmem/hermetic:nvshmem_json_init_repository.bzl",
+    "@rules_ml_toolchain//gpu/nvshmem:nvshmem_json_init_repository.bzl",
     "nvshmem_json_init_repository",
 )
 
@@ -210,18 +227,11 @@ load(
     "NVSHMEM_REDISTRIBUTIONS",
 )
 load(
-    "@rules_ml_toolchain//third_party/nvshmem/hermetic:nvshmem_redist_init_repository.bzl",
+    "@rules_ml_toolchain//gpu/nvshmem:nvshmem_redist_init_repository.bzl",
     "nvshmem_redist_init_repository",
 )
 
 nvshmem_redist_init_repository(
     nvshmem_redistributions = NVSHMEM_REDISTRIBUTIONS,
 )
-
-load(
-    "@rules_ml_toolchain//third_party/nvshmem/hermetic:nvshmem_configure.bzl",
-    "nvshmem_configure",
-)
-
-nvshmem_configure(name = "local_config_nvshmem")
 
