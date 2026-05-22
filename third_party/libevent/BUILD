@@ -59,7 +59,15 @@ genrule(
         "cp -R $$(pwd)/external/com_github_libevent_libevent/* $$TMP_DIR",
         "cd $$TMP_DIR",
         "./autogen.sh",
-        "./configure --prefix=$$INSTALL_DIR CFLAGS=-fPIC CXXFLAGS=-fPIC --enable-shared=no --disable-openssl",
+        # We compile on Ubuntu 24.04 (glibc 2.39 headers) but link against a
+        # hermetic glibc 2.27 sysroot, so any symbol newer than 2.27 fails to link.
+        # The ac_cv_func_*=no cache vars force libevent to use its own
+        # implementations of arc4random / arc4random_buf / strlcpy instead of
+        # binding to glibc's (and they pair with the ARC4RANDOM_EXPORT patch
+        # applied in workspace.bzl, which makes arc4random_buf extern so it
+        # doesn't conflict with the prototype that glibc 2.36+ still emits in
+        # <stdlib.h> under _GNU_SOURCE).
+        "./configure --prefix=$$INSTALL_DIR CFLAGS='-fPIC -std=gnu99' CXXFLAGS=-fPIC --enable-shared=no --disable-openssl ac_cv_func_arc4random=no ac_cv_func_arc4random_buf=no ac_cv_func_strlcpy=no",
         "make install",
         "rm -rf $$TMP_DIR",
     ]),
@@ -75,6 +83,10 @@ cc_library(
     includes = ["libevent/include"],
     linkopts = ["-lpthread"],
     linkstatic = 1,
+    # libevent objects (built on Ubuntu 24.04 host with _GNU_SOURCE) reference
+    # __isoc23_strtol / strtoll / strtoul / sscanf, which the hermetic glibc
+    # 2.27 sysroot doesn't provide.  See third_party/glibc_compat for the shim.
+    deps = ["@//third_party/glibc_compat:glibc_compat"],
 )
 
 filegroup(
