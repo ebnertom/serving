@@ -4,10 +4,11 @@ build:release --copt=-msse4.2
 
 # Options used to build with CUDA.
 build:cuda --repo_env TF_NEED_CUDA=1
-build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda --@local_config_cuda//:enable_cuda
 
-# Options used to build with CUDA clang
+# Build with NVCC for GPU device code and hermetic clang for host.
+# Matches the TF 2.21 cuda_nvcc config; NVCC from CUDA 12.8.1 supports sm_120
+# while the hermetic Clang 18 bundled in rules_ml_toolchain does not.
 build:cuda_clang --config=cuda
 build:cuda_clang --copt=-Wno-gnu-offsetof-extensions
 build:cuda_clang --copt=-Wno-error=unused-command-line-argument
@@ -15,15 +16,15 @@ build --linkopt=-Wno-unused-command-line-argument
 build --host_linkopt=-Wno-unused-command-line-argument
 build:cuda_clang --host_copt=-Wno-error=unused-command-line-argument
 build:cuda_clang --repo_env TF_NEED_TENSORRT=0
-build:cuda_clang --action_env=TF_CUDA_CLANG="1"
-build:cuda_clang --@local_config_cuda//:cuda_compiler=clang
-build:cuda_clang --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_89,compute_90"
+build:cuda_clang --action_env=TF_NVCC_CLANG="1"
+build:cuda_clang --@local_config_cuda//:cuda_compiler=nvcc
+build:cuda_clang --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_75,sm_80,sm_89,sm_90,sm_120,compute_120"
 
-build:cuda_clang --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
-build:cuda_clang --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
+build:cuda_clang --repo_env=HERMETIC_CUDA_VERSION="12.8.1"
+build:cuda_clang --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
+build:cuda_clang --repo_env=HERMETIC_NCCL_VERSION="2.29.2"
 build:cuda_clang --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
-build:cuda_clang --action_env=GCC_HOST_COMPILER_PATH="/usr/bin/gcc-10"
-build:cuda_clang --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-17/bin/clang"
+build:cuda_clang --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-20/bin/clang"
 
 # Options used to build with TPU support.
 build:tpu --define=with_tpu_support=true --define=framework_shared_object=false
