@@ -1,5 +1,20 @@
 # TensorFlow Serving
 
+## Fork status
+
+This fork updates TensorFlow Serving to build with:
+- TensorFlow: 2.21.0
+- CUDA: 12.8.1
+- cuDNN: 9.8.0
+- Bazelisk: 1.26.0
+
+NVIDIA Blackwell (sm_120, e.g. RTX 5090) and newer NVIDIA drivers seems to require **CUDA 12.8** — a version that
+pre-built TensorFlow wheels and the official TensorFlow Serving images do not yet
+support. Building from source is the only way to get a working TF + TF Serving
+stack on Blackwell hardware today.
+
+## General Notes
+
 [![Ubuntu Build Status](https://storage.googleapis.com/tensorflow-serving-kokoro-build-badges-bucket/ubuntu.svg)](https://storage.googleapis.com/tensorflow-serving-kokoro-build-badges-bucket/ubuntu.html)
 [![Ubuntu Build Status at TF HEAD](https://storage.googleapis.com/tensorflow-serving-kokoro-build-badges-bucket/ubuntu-tf-head.svg)](https://storage.googleapis.com/tensorflow-serving-kokoro-build-badges-bucket/ubuntu-tf-head.html)
 ![Docker CPU Nightly Build Status](https://storage.googleapis.com/tensorflow-serving-kokoro-build-badges-bucket/docker-cpu-nightly.svg)
